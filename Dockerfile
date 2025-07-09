@@ -15,7 +15,7 @@ RUN git clone https://github.com/google/nsjail.git /opt/nsjail && \
 RUN mkdir -p /sandbox && chmod 777 /sandbox
 
 WORKDIR /app
-COPY . /app
+COPY main.py /app/
 
 RUN pip install flask pandas numpy
 

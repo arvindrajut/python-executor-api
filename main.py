@@ -5,7 +5,6 @@ import json
 
 app = Flask(__name__)
 
-NSJAIL_CONFIG = '/app/nsjail.cfg'
 NSJAIL_BINARY = '/usr/bin/nsjail'
 PYTHON_BINARY = '/usr/bin/python3'
 
@@ -24,12 +23,37 @@ def execute():
         f.write(script)
 
     try:
+        # Use command line arguments instead of config file
+        cmd = [
+            NSJAIL_BINARY,
+            '--mode', 'o',  # ONCE mode
+            '--exec_bin', PYTHON_BINARY,
+            '--cwd', '/sandbox',
+            '--bindmount', '/sandbox:/sandbox',
+            '--time_limit', '10',
+            '--rlimit_as', '512',
+            '--rlimit_cpu', '5',
+            '--rlimit_fsize', '10',
+            '--rlimit_nofile', '32',
+            '--user', '99999',
+            '--group', '99999',
+            '--disable_clone_newnet',
+            '--',
+            'script.py'
+        ]
+        
         result = subprocess.run(
-            [NSJAIL_BINARY, '--config', NSJAIL_CONFIG, '--', PYTHON_BINARY, script_path],
-            capture_output=True, text=True, timeout=10
+            cmd,
+            capture_output=True, 
+            text=True, 
+            timeout=10
         )
+        
         if result.returncode != 0:
             return jsonify({'error': 'Script execution failed', 'stderr': result.stderr}), 400
+
+        if not result.stdout.strip():
+            return jsonify({'error': 'Script produced no output'}), 400
 
         last_line = result.stdout.strip().splitlines()[-1]
         try:
