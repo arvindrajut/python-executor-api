@@ -23,7 +23,7 @@ def execute():
         f.write(script)
 
     try:
-        # Use command line arguments instead of config file
+        # Extremely minimal nsjail config for maximum compatibility
         cmd = [
             NSJAIL_BINARY,
             '--mode', 'o',  # ONCE mode
@@ -35,9 +35,12 @@ def execute():
             '--rlimit_cpu', '5',
             '--rlimit_fsize', '10',
             '--rlimit_nofile', '32',
-            '--user', '99999',
-            '--group', '99999',
             '--disable_clone_newnet',
+            '--disable_clone_newuser',
+            '--disable_clone_newcgroup',
+            '--disable_clone_newuts',
+            '--disable_clone_newipc',
+            '--disable_clone_newns',  # Also disable mount namespace if needed
             '--',
             'script.py'
         ]
