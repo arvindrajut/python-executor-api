@@ -23,7 +23,7 @@ def execute():
         f.write(script)
 
     try:
-        # Extremely minimal nsjail config for maximum compatibility
+        # Use command line arguments instead of config file - more compatible for Cloud Run
         cmd = [
             NSJAIL_BINARY,
             '--mode', 'o',  # ONCE mode
@@ -36,11 +36,12 @@ def execute():
             '--rlimit_fsize', '10',
             '--rlimit_nofile', '32',
             '--disable_clone_newnet',
-            '--disable_clone_newuser',
-            '--disable_clone_newcgroup',
-            '--disable_clone_newuts',
-            '--disable_clone_newipc',
-            '--disable_clone_newns',  # Also disable mount namespace if needed
+            '--disable_clone_newuser',  # Disable user namespace - often problematic in containers
+            '--disable_clone_newcgroup',  # Disable cgroup namespace - may not be available
+            '--disable_clone_newuts',  # Disable UTS namespace
+            '--disable_clone_newipc',  # Disable IPC namespace
+            '--keep_caps',  # Keep capabilities to avoid securebits issues
+            '--disable_no_new_privs',  # Disable NO_NEW_PRIVS to avoid prctl issues
             '--',
             'script.py'
         ]
