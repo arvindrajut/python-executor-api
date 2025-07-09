@@ -2,10 +2,12 @@ from flask import Flask, request, jsonify
 import os
 import subprocess
 import json
+import signal
+import tempfile
+import shutil
 
 app = Flask(__name__)
 
-NSJAIL_BINARY = '/usr/bin/nsjail'
 PYTHON_BINARY = '/usr/bin/python3'
 
 @app.route('/execute', methods=['POST'])
@@ -18,39 +20,38 @@ def execute():
     if 'def main' not in script:
         return jsonify({'error': 'Script must contain a main() function'}), 400
 
-    script_path = '/sandbox/script.py'
-    with open(script_path, 'w') as f:
-        f.write(script)
-
+    # Create a temporary directory for this execution
+    temp_dir = tempfile.mkdtemp(prefix='python_exec_')
+    script_path = os.path.join(temp_dir, 'script.py')
+    
     try:
-        # Use command line arguments instead of config file - more compatible for Cloud Run
-        cmd = [
-            NSJAIL_BINARY,
-            '--mode', 'o',  # ONCE mode
-            '--exec_file', PYTHON_BINARY,
-            '--cwd', '/sandbox',
-            '--bindmount', '/sandbox:/sandbox',
-            '--time_limit', '10',
-            '--rlimit_as', '512',
-            '--rlimit_cpu', '5',
-            '--rlimit_fsize', '10',
-            '--rlimit_nofile', '32',
-            '--disable_clone_newnet',
-            '--disable_clone_newuser',  # Disable user namespace - often problematic in containers
-            '--disable_clone_newcgroup',  # Disable cgroup namespace - may not be available
-            '--disable_clone_newuts',  # Disable UTS namespace
-            '--disable_clone_newipc',  # Disable IPC namespace
-            '--keep_caps',  # Keep capabilities to avoid securebits issues
-            '--disable_no_new_privs',  # Disable NO_NEW_PRIVS to avoid prctl issues
-            '--',
-            'script.py'
-        ]
+        with open(script_path, 'w') as f:
+            f.write(script)
+
+        # Use subprocess with timeout and resource limits
+        cmd = [PYTHON_BINARY, script_path]
+        
+        # Set resource limits using ulimit-like approach
+        def preexec_fn():
+            # Set CPU time limit (5 seconds)
+            import resource
+            resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
+            # Set memory limit (512 MB)
+            resource.setrlimit(resource.RLIMIT_AS, (512*1024*1024, 512*1024*1024))
+            # Set file size limit (10 MB)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (10*1024*1024, 10*1024*1024))
+            # Set number of open files limit
+            resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
+            # Change to a restricted directory
+            os.chdir(temp_dir)
         
         result = subprocess.run(
             cmd,
             capture_output=True, 
             text=True, 
-            timeout=10
+            timeout=10,
+            preexec_fn=preexec_fn,
+            cwd=temp_dir
         )
         
         if result.returncode != 0:
@@ -66,10 +67,14 @@ def execute():
             return jsonify({'error': 'main() did not return a valid JSON object'}), 400
 
         return jsonify({'result': result_json, 'stdout': result.stdout})
+    
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Script execution timed out'}), 408
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
