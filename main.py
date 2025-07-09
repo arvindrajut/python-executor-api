@@ -27,7 +27,7 @@ def execute():
         cmd = [
             NSJAIL_BINARY,
             '--mode', 'o',  # ONCE mode
-            '--exec_bin', PYTHON_BINARY,
+            '--exec_file', PYTHON_BINARY,
             '--cwd', '/sandbox',
             '--bindmount', '/sandbox:/sandbox',
             '--time_limit', '10',
